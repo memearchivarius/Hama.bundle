@@ -411,7 +411,7 @@ def LoadFile(filename="", relativeDirectory="", url="", headers={}, data=None, c
     
     # Download URL to memory, Plex cache to 1 day
     try:
-      file_downloaded = HTTP.Request(url, headers=headers, data=data, timeout=60, cacheTime=CACHE_1DAY).content   #'Accept-Encoding':'gzip'  # Loaded with Plex cache, str prevent AttributeError: 'HTTPRequest' object has no attribute 'find', None if 'thetvdb' in url else 
+      file_downloaded = HTTP.Request(url, headers=headers, data=data, timeout=300, cacheTime=CACHE_1DAY).content   #'Accept-Encoding':'gzip'  # Loaded with Plex cache, str prevent AttributeError: 'HTTPRequest' object has no attribute 'find', None if 'thetvdb' in url else 
       if url.endswith(".gz"):  file_downloaded = decompress(file_downloaded)
     except Exception as e:
       Log.Error("common.LoadFile() - issue loading url: '{}', filename: '{}', Headers: {}, Exception: '{}'".format(url, filename, headers, e))        # issue loading, but not AniDB banned as it returns "<error>Banned</error>"

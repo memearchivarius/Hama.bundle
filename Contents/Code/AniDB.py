@@ -15,10 +15,11 @@ from common import Log, DictString, Dict, SaveDict, GetXml # Direct import of he
 import AnimeLists
 
 ### Variables ###
-ANIDB_TITLE_DOMAIN = 'http://anidb.net'
-ANIDB_TITLES       = ANIDB_TITLE_DOMAIN + '/api/anime-titles.xml.gz'  # AniDB title database file contain all ids, all languages
-ANIDB_TITLES_HTTPS = 'https://anidb.net/api/anime-titles.xml.gz'
-AniDBTitlesDB      = None
+ANIDB_TITLES_GITHUB = 'https://raw.githubusercontent.com/Anime-Lists/anime-lists/master/animetitles.xml'
+ANIDB_TITLE_DOMAIN  = 'http://anidb.net'
+ANIDB_TITLES        = ANIDB_TITLE_DOMAIN + '/api/anime-titles.xml.gz'
+ANIDB_TITLES_HTTPS  = 'https://anidb.net/api/anime-titles.xml.gz'
+AniDBTitlesDB       = None
 
 ANIDB_API_DOMAIN   = 'http://api.anidb.net:9001'
 ANIDB_HTTP_API_URL = ANIDB_API_DOMAIN + '/httpapi?request=anime&client=hama&clientver=1&protover=1&aid='
@@ -381,26 +382,38 @@ def GetAniDBTitlesDB():
   ''' Get the AniDB title database
   '''
   global AniDBTitlesDB
-  Log.Info("AniDB.GetAniDBTitlesDB() - Loading titles database...")
+  Log.Info("AniDB.GetAniDBTitlesDB() - Loading titles database from GitHub (community mirror)...")
+  
+  # GitHub raw doesn't need complex headers, but we keep them for compatibility
+  headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  }
+
   try:
-    AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES)  # AniDB title database loaded once every 2 weeks
+    # Try GitHub first as it is most reliable
+    AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES_GITHUB, headers=headers)
   except Exception as e:
-    Log.Error("AniDB.GetAniDBTitlesDB() - Failed to load titles via HTTP: {}".format(e))
+    Log.Error("AniDB.GetAniDBTitlesDB() - Failed to load titles from GitHub: {}".format(e))
 
   if AniDBTitlesDB is None:
-    Log.Info("AniDB.GetAniDBTitlesDB() - Attempting fallback via HTTPS...")
+    Log.Info("AniDB.GetAniDBTitlesDB() - Falling back to AniDB HTTP...")
     try:
-      AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES_HTTPS)
+      AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES, headers=headers)
+    except Exception as e:
+      Log.Error("AniDB.GetAniDBTitlesDB() - Failed to load titles via HTTP: {}".format(e))
+
+  if AniDBTitlesDB is None:
+    Log.Info("AniDB.GetAniDBTitlesDB() - Falling back to AniDB HTTPS...")
+    try:
+      AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES_HTTPS, headers=headers)
     except Exception as e:
       Log.Error("AniDB.GetAniDBTitlesDB() - Failed to load titles via HTTPS: {}".format(e))
 
   if AniDBTitlesDB is None:
-    Log.Error("AniDB.GetAniDBTitlesDB() - CRITICAL: Failed to load AniDB titles database. Title searches will not return results.")
-    # We do not raise Exception here to avoid crashing the whole agent if only title DB is missing
-    # But we set it to an empty element so xpath calls don't crash
+    Log.Error("AniDB.GetAniDBTitlesDB() - CRITICAL: Failed to load AniDB titles database from all sources. Title searches will be unavailable.")
     AniDBTitlesDB = etree.Element("animetitles")
   else:
-    Log.Info("AniDB.GetAniDBTitlesDB() - Entries loaded: {}, File: {}".format(len(AniDBTitlesDB), ANIDB_TITLES))
+    Log.Info("AniDB.GetAniDBTitlesDB() - Entries loaded successfully. File: {}".format(ANIDB_TITLES_GITHUB if 'github' in str(AniDBTitlesDB) else 'Local/AniDB'))
 
 def GetAniDBTitle(titles, lang=None, title_sort=False):
   ''' Extract the series/movie/Episode title from AniDB
