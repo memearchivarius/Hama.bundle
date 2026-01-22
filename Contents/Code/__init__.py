@@ -111,9 +111,16 @@ def Search(results, media, lang, manual, movie):
   else:  #if media.year is not None:  orig_title = orig_title + " (" + str(media.year) + ")"  ### Year - if present (manual search or from scanner but not mine), include in title ###
     Log.Info('--- source searches ---'.ljust(157, '-'))
     maxi, n = 0, 0
-    if movie or max(map(int, media.seasons.keys()))<=1:  maxi, n =         AniDB.Search(results, media, lang, manual, movie)
-    if maxi<50 and movie:                                maxi    =    TheMovieDb.Search(results, media, lang, manual, movie)
-    if maxi<80 and not movie or n>1:                     maxi    = max(TheTVDBv2.Search(results, media, lang, manual, movie), maxi)
+    if movie or max(map(int, media.seasons.keys()))<=1:
+      try:
+        maxi, n = AniDB.Search(results, media, lang, manual, movie)
+      except Exception as e:
+        Log.Error("AniDB search failed: {}".format(e))
+        maxi, n = 0, 0
+    if maxi<50 and movie:
+      maxi = TheMovieDb.Search(results, media, lang, manual, movie)
+    if (maxi<80 and not movie) or (n>1) or (manual and maxi<99):
+      maxi = max(TheTVDBv2.Search(results, media, lang, manual, movie), maxi)
   Log.Info("".ljust(157, '='))
   Log.Info("end: {}".format(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S,%f")))
   Log.Close()

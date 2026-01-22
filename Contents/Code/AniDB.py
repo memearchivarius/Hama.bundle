@@ -15,8 +15,9 @@ from common import Log, DictString, Dict, SaveDict, GetXml # Direct import of he
 import AnimeLists
 
 ### Variables ###
-ANIDB_TITLE_DOMAIN = 'https://anidb.net'
+ANIDB_TITLE_DOMAIN = 'http://anidb.net'
 ANIDB_TITLES       = ANIDB_TITLE_DOMAIN + '/api/anime-titles.xml.gz'  # AniDB title database file contain all ids, all languages
+ANIDB_TITLES_HTTPS = 'https://anidb.net/api/anime-titles.xml.gz'
 AniDBTitlesDB      = None
 
 ANIDB_API_DOMAIN   = 'http://api.anidb.net:9001'
@@ -97,12 +98,12 @@ def Search(results, media, lang, manual, movie):
       else:                                      score = WordsScore(orig_title_cleansed.split(), title_cleansed)  # - type_order.index(Type)  #Movies can have same title
       if score>best_score_entry or score==best_score_entry and (not best_type_entry or type_order.index(Type)<type_order.index(best_type_entry)):
         best_score_entry, best_title_entry, best_type_entry, best_lang_entry, best_title_entry_cleansed = score, title, Type, Lang, title_cleansed
-    if best_score_entry<25:  last_chance.append((best_score_entry, best_title_entry, best_type_entry, best_lang_entry, aid));  continue
+    if best_score_entry < (25 if not manual else 10):  last_chance.append((best_score_entry, best_title_entry, best_type_entry, best_lang_entry, aid));  continue
     Log.Info('[-] score: {:>3}, aid: {:>5}, title: "{}"'.format(best_score_entry, aid, best_title_entry))
     #Log.Info("levenstein: {}".format(100 - 200 * Util.LevenshteinDistance(title_cleansed, orig_title_cleansed) / (len(title_cleansed) + len(orig_title_cleansed)) ))
     results.Append(MetadataSearchResult(id="%s-%s" % ("anidb", aid), name="{title} [{Type}({Lang})] [anidb-{aid}]".format(title=best_title_entry, aid=aid, Type=best_type_entry, Lang=best_lang_entry), year=media.year, lang=lang, score=best_score_entry))
     if best_score_entry > best_score:  best_score, best_title, best_type, best_lang, best_aid = best_score_entry, best_title_entry, best_type_entry, best_lang_entry, aid
-  if best_score <50:  # Add back lower than 25 if nothin above 50
+  if best_score < 50 or manual:  # Add back lower than 25 if nothing above 50, or always if manual
     for best_score_entry, best_title_entry, best_type_entry, best_lang_entry, aid in last_chance:
       Log.Info('[-] score: {:>3}, aid: {:>5}, title: "{}"'.format(best_score_entry, best_title_entry, aid))
       results.Append(MetadataSearchResult(id="%s-%s" % ("anidb", aid), name="{title} [{Type}({Lang}): {aid}]".format(title=best_title_entry, aid=aid, Type=best_type_entry, Lang=best_lang_entry), year=media.year, lang=lang, score=best_score_entry))
@@ -380,9 +381,26 @@ def GetAniDBTitlesDB():
   ''' Get the AniDB title database
   '''
   global AniDBTitlesDB
-  AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES)  # AniDB title database loaded once every 2 weeks
-  if AniDBTitlesDB is None:  raise Exception("Failed to load core file '{url}'".format(url=os.path.splitext(os.path.basename(ANIDB_TITLES))[0]))
-  else: Log.Info("Entries loaded: {}, File: {}".format(len(AniDBTitlesDB), ANIDB_TITLES))
+  Log.Info("AniDB.GetAniDBTitlesDB() - Loading titles database...")
+  try:
+    AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES)  # AniDB title database loaded once every 2 weeks
+  except Exception as e:
+    Log.Error("AniDB.GetAniDBTitlesDB() - Failed to load titles via HTTP: {}".format(e))
+
+  if AniDBTitlesDB is None:
+    Log.Info("AniDB.GetAniDBTitlesDB() - Attempting fallback via HTTPS...")
+    try:
+      AniDBTitlesDB = common.LoadFile(filename='anime-titles.xml', relativeDirectory="AniDB", url=ANIDB_TITLES_HTTPS)
+    except Exception as e:
+      Log.Error("AniDB.GetAniDBTitlesDB() - Failed to load titles via HTTPS: {}".format(e))
+
+  if AniDBTitlesDB is None:
+    Log.Error("AniDB.GetAniDBTitlesDB() - CRITICAL: Failed to load AniDB titles database. Title searches will not return results.")
+    # We do not raise Exception here to avoid crashing the whole agent if only title DB is missing
+    # But we set it to an empty element so xpath calls don't crash
+    AniDBTitlesDB = etree.Element("animetitles")
+  else:
+    Log.Info("AniDB.GetAniDBTitlesDB() - Entries loaded: {}, File: {}".format(len(AniDBTitlesDB), ANIDB_TITLES))
 
 def GetAniDBTitle(titles, lang=None, title_sort=False):
   ''' Extract the series/movie/Episode title from AniDB
