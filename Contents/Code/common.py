@@ -436,7 +436,8 @@ def LoadFile(filename="", relativeDirectory="", url="", headers={}, data=None, c
       
       # Download URL to memory, Plex cache to 1 day
       try:
-        if GetProxyUrl():
+        proxy = GetProxyUrl()
+        if proxy:
           Log.Root("common.LoadFile() - Using HTTP proxy for url: '{}'".format(url))
           request = urllib2.Request(url, data=data, headers=headers)
           file_downloaded = UrlOpen(request, timeout=60).read()
@@ -444,7 +445,7 @@ def LoadFile(filename="", relativeDirectory="", url="", headers={}, data=None, c
           file_downloaded = HTTP.Request(url, headers=headers, data=data, timeout=60, cacheTime=CACHE_1DAY).content   #'Accept-Encoding':'gzip'  # Loaded with Plex cache, str prevent AttributeError: 'HTTPRequest' object has no attribute 'find', None if 'thetvdb' in url else 
         if url.endswith(".gz"):  file_downloaded = decompress(file_downloaded)
       except Exception as e:
-        Log.Error("common.LoadFile() - issue loading url: '{}', filename: '{}', Headers: {}, Exception: '{}'".format(url, filename, headers, e))        # issue loading, but not AniDB banned as it returns "<error>Banned</error>"
+        Log.Error("common.LoadFile() - issue loading url: '{}', filename: '{}', Headers: {}, Proxy: '{}', Exception: '{}'".format(url, filename, headers, proxy or "none", e))        # issue loading, but not AniDB banned as it returns "<error>Banned</error>"
       else:
         Log.Root("Downloaded URL '{}'".format(url))
 
