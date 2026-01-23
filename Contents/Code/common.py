@@ -32,7 +32,7 @@ netLocked         = {}
 WEB_LINK          = "<a href='%s' target='_blank'>%s</a>"
 TVDB_SERIE_URL    = 'https://thetvdb.com/?tab=series&id='  # Used in error_log generation
 ANIDB_SERIE_URL   = 'https://anidb.net/anime/'             # Used in error_log generation
-DefaultPrefs      = ("SerieLanguagePriority", "EpisodeLanguagePriority", "PosterLanguagePriority", "AnidbGenresAddWeights", "MinimumWeight", "adult", "OMDbApiKey") #"Simkl", 
+DefaultPrefs      = ("SerieLanguagePriority", "EpisodeLanguagePriority", "PosterLanguagePriority", "AnidbGenresAddWeights", "MinimumWeight", "adult", "OMDbApiKey", "HamaHttpProxy") #"Simkl", 
 FieldListMovies   = ('original_title', 'title', 'title_sort', 'roles', 'studio', 'year', 'originally_available_at', 'tagline', 'summary', 'content_rating', 'content_rating_age',
                      'producers', 'directors', 'writers', 'countries', 'posters', 'art', 'themes', 'rating', 'quotes', 'trivia', 'genres', 'collections')
 FieldListSeries   = ('title', 'title_sort', 'originally_available_at', 'duration','rating',  'reviews', 'collections', 'genres', 'tags' , 'summary', 'extras', 'countries', 'rating_count',
@@ -46,7 +46,13 @@ COMMON_HEADERS    = {'User-agent': 'Plex/HAMA', 'Content-type': 'application/jso
 THROTTLE          = {}
 
 def GetProxyUrl():
-  return os.environ.get('HAMA_HTTP_PROXY') or os.environ.get('http_proxy') or os.environ.get('https_proxy') or os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY')
+  proxy = os.environ.get('HAMA_HTTP_PROXY') or os.environ.get('http_proxy') or os.environ.get('https_proxy') or os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY')
+  if proxy:
+    return proxy
+  try:
+    return Prefs['HamaHttpProxy'] if Prefs['HamaHttpProxy'] else ""
+  except Exception:
+    return ""
 
 def UrlOpen(request, timeout=20):
   proxy = GetProxyUrl()

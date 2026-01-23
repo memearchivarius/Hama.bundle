@@ -79,6 +79,10 @@ def Start():
     ValidatePrefs()
   except Exception as e:
     Log.Error("ValidatePrefs failed: {}".format(e))
+  try:
+    Log.Info("HAMA proxy: '{}'".format(common.GetProxyUrl() or "not set"))
+  except Exception as e:
+    Log.Error("Proxy log failed: {}".format(e))
   common.GetPlexLibraries()
   # Load core files
   AnimeLists.GetAniDBTVDBMap()
