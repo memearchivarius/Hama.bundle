@@ -75,7 +75,10 @@ def Start():
   Log.Info("HTTP Anidb Metadata Agent by ZeroQI (Forked from Atomicstrawberry's v0.4, AnimeLists XMLs by SdudLee) - CPU: {}, OS: {}".format(Platform.CPU, Platform.OS))
   #HTTP.CacheTime = CACHE_1DAY  # in sec: CACHE_1MINUTE, CACHE_1HOUR, CACHE_1DAY, CACHE_1WEEK, CACHE_1MONTH
   HTTP.CacheTime = CACHE_1MINUTE*30
-  ValidatePrefs()
+  try:
+    ValidatePrefs()
+  except Exception as e:
+    Log.Error("ValidatePrefs failed: {}".format(e))
   common.GetPlexLibraries()
   # Load core files
   AnimeLists.GetAniDBTVDBMap()
@@ -142,20 +145,81 @@ def Update(metadata, media, lang, force, movie):
   #   mappingList['season_map']:    AnimeLists->TheTVDBv2->AdjustMapping
   #   mappingList['relations_map']: AniDB->AdjustMapping
   #   mappingList['absolute_map']:  tvdb4->TheTVDBv2->AniDB
-  dict_AnimeLists, AniDBid, TVDBid, TMDbid, IMDbid, mappingList =  AnimeLists.GetMetadata(media, movie, error_log, metadata.id)
-  dict_tvdb4                                                    =       tvdb4.GetMetadata(media, movie,                  source,          TVDBid,                 mappingList)
-  dict_TheTVDB,                             IMDbid              =   TheTVDBv2.GetMetadata(media, movie, error_log, lang, source, AniDBid, TVDBid, IMDbid,         mappingList)
-  dict_AniDB, ANNid, MALids                                     =       AniDB.GetMetadata(media, movie, error_log,       source, AniDBid, TVDBid, AnimeLists.AniDBMovieSets, mappingList)
-  dict_TheMovieDb,          TSDbid, TMDbid, IMDbid              =  TheMovieDb.GetMetadata(media, movie,                                   TVDBid, TMDbid, IMDbid)
-  dict_FanartTV                                                 =    FanartTV.GetMetadata(       movie,                                   TVDBid, TMDbid, IMDbid)
-  dict_Plex                                                     =        Plex.GetMetadata(metadata, error_log, TVDBid, Dict(dict_TheTVDB, 'title'))
-  dict_TVTunes                                                  =     TVTunes.GetMetadata(metadata, Dict(dict_TheTVDB, 'title'), Dict(mappingList, AniDBid, 'name'))  #Sources[m:eval('dict_'+m)]
-  dict_OMDb                                                     =        OMDb.GetMetadata(movie, IMDbid)  #TVDBid=='hentai'
-  dict_MyAnimeList, MainMALid                                   = MyAnimeList.GetMetadata(MALids, "movie" if movie else "tv", dict_AniDB)
-  dict_AniList                                                  =     AniList.GetMetadata(AniDBid, MainMALid)
-  dict_Local                                                    =       Local.GetMetadata(media, movie)
-  if anidb34.AdjustMapping(source, mappingList, dict_AniDB, dict_TheTVDB, dict_FanartTV):
-    dict_AniDB, ANNid, MALids                                   =       AniDB.GetMetadata(media, movie, error_log,       source, AniDBid, TVDBid, AnimeLists.AniDBMovieSets, mappingList)
+  dict_AnimeLists, dict_tvdb4, dict_TheTVDB, dict_AniDB = {}, {}, {}, {}
+  dict_TheMovieDb, dict_FanartTV, dict_Plex = {}, {}, {}
+  dict_TVTunes, dict_OMDb, dict_MyAnimeList, dict_AniList, dict_Local = {}, {}, {}, {}, {}
+  AniDBid, TVDBid, TMDbid, IMDbid, ANNid, MainMALid = "", "", "", "", "", ""
+  MALids, mappingList = {}, {}
+  TSDbid = ""
+
+  try:
+    dict_AnimeLists, AniDBid, TVDBid, TMDbid, IMDbid, mappingList = AnimeLists.GetMetadata(media, movie, error_log, metadata.id)
+  except Exception as e:
+    Log.Error("AnimeLists.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_tvdb4 = tvdb4.GetMetadata(media, movie, source, TVDBid, mappingList)
+  except Exception as e:
+    Log.Error("tvdb4.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_TheTVDB, IMDbid = TheTVDBv2.GetMetadata(media, movie, error_log, lang, source, AniDBid, TVDBid, IMDbid, mappingList)
+  except Exception as e:
+    Log.Error("TheTVDBv2.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_AniDB, ANNid, MALids = AniDB.GetMetadata(media, movie, error_log, source, AniDBid, TVDBid, AnimeLists.AniDBMovieSets, mappingList)
+  except Exception as e:
+    Log.Error("AniDB.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_TheMovieDb, TSDbid, TMDbid, IMDbid = TheMovieDb.GetMetadata(media, movie, TVDBid, TMDbid, IMDbid)
+  except Exception as e:
+    Log.Error("TheMovieDb.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_FanartTV = FanartTV.GetMetadata(movie, TVDBid, TMDbid, IMDbid)
+  except Exception as e:
+    Log.Error("FanartTV.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_Plex = Plex.GetMetadata(metadata, error_log, TVDBid, Dict(dict_TheTVDB, 'title'))
+  except Exception as e:
+    Log.Error("Plex.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_TVTunes = TVTunes.GetMetadata(metadata, Dict(dict_TheTVDB, 'title'), Dict(mappingList, AniDBid, 'name'))
+  except Exception as e:
+    Log.Error("TVTunes.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_OMDb = OMDb.GetMetadata(movie, IMDbid)
+  except Exception as e:
+    Log.Error("OMDb.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_MyAnimeList, MainMALid = MyAnimeList.GetMetadata(MALids, "movie" if movie else "tv", dict_AniDB)
+  except Exception as e:
+    Log.Error("MyAnimeList.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_AniList = AniList.GetMetadata(AniDBid, MainMALid)
+  except Exception as e:
+    Log.Error("AniList.GetMetadata failed: {}".format(e))
+
+  try:
+    dict_Local = Local.GetMetadata(media, movie)
+  except Exception as e:
+    Log.Error("Local.GetMetadata failed: {}".format(e))
+
+  try:
+    if anidb34.AdjustMapping(source, mappingList, dict_AniDB, dict_TheTVDB, dict_FanartTV):
+      try:
+        dict_AniDB, ANNid, MALids = AniDB.GetMetadata(media, movie, error_log, source, AniDBid, TVDBid, AnimeLists.AniDBMovieSets, mappingList)
+      except Exception as e:
+        Log.Error("AniDB.GetMetadata retry failed: {}".format(e))
+  except Exception as e:
+    Log.Error("anidb34.AdjustMapping failed: {}".format(e))
   Log.Info('=== Update() ==='.ljust(157, '='))
   Log.Info("AniDBid: '{}', TVDBid: '{}', TMDbid: '{}', IMDbid: '{}', ANNid:'{}', MALid: '{}'".format(AniDBid, TVDBid, TMDbid, IMDbid, ANNid, MainMALid))
   common.write_logs(media, movie, error_log, source, AniDBid, TVDBid)

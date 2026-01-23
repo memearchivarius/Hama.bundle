@@ -43,19 +43,30 @@ def LoadFileTVDB(id="", filename="", url="", headers={}):
   """
   global TVDB_AUTH_TIME
 
+  wait_started = time.time()
   while 'LoadFileTVDB' in netLocked and netLocked['LoadFileTVDB'][0]:
-    Log.Root("TheTVDBv2.LoadFileTVDB() - Waiting for lock: 'LoadFileTVDB'"); time.sleep(1)
+    lock_age = int(time.time()) - int(netLocked['LoadFileTVDB'][1]) if 'LoadFileTVDB' in netLocked else 0
+    if lock_age > 300:
+      Log.Root("TheTVDBv2.LoadFileTVDB() - Lock stale ({}s). Forcing release.".format(lock_age))
+      netLocked['LoadFileTVDB'] = (False, 0)
+      break
+    if time.time() - wait_started > 30:
+      Log.Root("TheTVDBv2.LoadFileTVDB() - Lock wait timeout. Proceeding.")
+      break
+    Log.Root("TheTVDBv2.LoadFileTVDB() - Waiting for lock: 'LoadFileTVDB'")
+    time.sleep(1)
   netLocked['LoadFileTVDB'] = (True, int(time.time())) #Log.Root("Lock acquired: 'LoadFile'")
 
-  # If no auth or auth is >12hrs old, authenticate from scratch
-  if 'Authorization' not in TVDB_HEADERS or (TVDB_AUTH_TIME and (time.time()-TVDB_AUTH_TIME) > CACHE_1DAY/2):
-    try:
-      TVDB_HEADERS['Authorization'] = 'Bearer ' + JSON.ObjectFromString(HTTP.Request(TVDB_LOGIN_URL, data=JSON.StringFromObject( {'apikey':TVDB_API_KEY} ), headers=common.UpdateDict(headers, common.COMMON_HEADERS), cacheTime=0).content)['token']
-      TVDB_AUTH_TIME = time.time()
-    except Exception as e:  Log.Root('TheTVDBv2.LoadFileTVDB() - Authorization Error: {}'.format(e))
-    else:                   Log.Root('TheTVDBv2.LoadFileTVDB() - URL {}, headers: {}'.format(TVDB_LOGIN_URL, headers))
-
-  netLocked['LoadFileTVDB'] = (False, 0)  #Log.Root("Lock released: 'LoadFile'")
+  try:
+    # If no auth or auth is >12hrs old, authenticate from scratch
+    if 'Authorization' not in TVDB_HEADERS or (TVDB_AUTH_TIME and (time.time()-TVDB_AUTH_TIME) > CACHE_1DAY/2):
+      try:
+        TVDB_HEADERS['Authorization'] = 'Bearer ' + JSON.ObjectFromString(HTTP.Request(TVDB_LOGIN_URL, data=JSON.StringFromObject( {'apikey':TVDB_API_KEY} ), headers=common.UpdateDict(headers, common.COMMON_HEADERS), cacheTime=0).content)['token']
+        TVDB_AUTH_TIME = time.time()
+      except Exception as e:  Log.Root('TheTVDBv2.LoadFileTVDB() - Authorization Error: {}'.format(e))
+      else:                   Log.Root('TheTVDBv2.LoadFileTVDB() - URL {}, headers: {}'.format(TVDB_LOGIN_URL, headers))
+  finally:
+    netLocked['LoadFileTVDB'] = (False, 0)  #Log.Root("Lock released: 'LoadFile'")
 
   return common.LoadFile(filename=filename, relativeDirectory=os.path.join("TheTVDB", "json", id), url=url, headers=common.UpdateDict(headers, TVDB_HEADERS))
 

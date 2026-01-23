@@ -402,30 +402,39 @@ def LoadFile(filename="", relativeDirectory="", url="", headers={}, data=None, c
 
     # Thread lock aquire
     netLock.acquire()
-
-    # Safeguard if netLock does not work as expected
-    while 'LoadFile' in netLocked and netLocked['LoadFile'][0]:
-      Log.Root("Waiting for lock: 'LoadFile'")
-      time.sleep(1)
-    netLocked['LoadFile'] = (True, int(time.time())) #Log.Root("Lock acquired: 'LoadFile'")
-    
-    # Download URL to memory, Plex cache to 1 day
     try:
-      file_downloaded = HTTP.Request(url, headers=headers, data=data, timeout=300, cacheTime=CACHE_1DAY).content   #'Accept-Encoding':'gzip'  # Loaded with Plex cache, str prevent AttributeError: 'HTTPRequest' object has no attribute 'find', None if 'thetvdb' in url else 
-      if url.endswith(".gz"):  file_downloaded = decompress(file_downloaded)
-    except Exception as e:
-      Log.Error("common.LoadFile() - issue loading url: '{}', filename: '{}', Headers: {}, Exception: '{}'".format(url, filename, headers, e))        # issue loading, but not AniDB banned as it returns "<error>Banned</error>"
-    else:
-      Log.Root("Downloaded URL '{}'".format(url))
+      # Safeguard if netLock does not work as expected
+      wait_started = time.time()
+      while 'LoadFile' in netLocked and netLocked['LoadFile'][0]:
+        lock_age = int(time.time()) - int(netLocked['LoadFile'][1]) if 'LoadFile' in netLocked else 0
+        if lock_age > 300:
+          Log.Root("LoadFile lock stale ({}s). Forcing release.".format(lock_age))
+          netLocked['LoadFile'] = (False, 0)
+          break
+        if time.time() - wait_started > 30:
+          Log.Root("LoadFile lock wait timeout. Proceeding without lock.")
+          break
+        Log.Root("Waiting for lock: 'LoadFile'")
+        time.sleep(1)
+      netLocked['LoadFile'] = (True, int(time.time())) #Log.Root("Lock acquired: 'LoadFile'")
+      
+      # Download URL to memory, Plex cache to 1 day
+      try:
+        file_downloaded = HTTP.Request(url, headers=headers, data=data, timeout=60, cacheTime=CACHE_1DAY).content   #'Accept-Encoding':'gzip'  # Loaded with Plex cache, str prevent AttributeError: 'HTTPRequest' object has no attribute 'find', None if 'thetvdb' in url else 
+        if url.endswith(".gz"):  file_downloaded = decompress(file_downloaded)
+      except Exception as e:
+        Log.Error("common.LoadFile() - issue loading url: '{}', filename: '{}', Headers: {}, Exception: '{}'".format(url, filename, headers, e))        # issue loading, but not AniDB banned as it returns "<error>Banned</error>"
+      else:
+        Log.Root("Downloaded URL '{}'".format(url))
 
-    # Sleeping after call completion to prevent ban
-    time.sleep(sleep)
+      # Sleeping after call completion to prevent ban
+      time.sleep(sleep)
+    finally:
+      # Safeguard if netLock does not work as expected
+      netLocked['LoadFile'] = (False, 0)  #Log.Root("Lock released: 'LoadFile'")
 
-    # Safeguard if netLock does not work as expected
-    netLocked['LoadFile'] = (False, 0)  #Log.Root("Lock released: 'LoadFile'")
-
-    # Thread lock release
-    netLock.release()
+      # Thread lock release
+      netLock.release()
     
     # Donwnloaded File checks and saving as cache  #if str(file).startswith("<Element error at ") or file in ('<error>Banned</error>', '<error>aid Missing or Invalid</error>'): 
     if file_downloaded:
@@ -487,43 +496,52 @@ def write_logs(media, movie, error_log, source, AniDBid, TVDBid):
   sleep_time_max = 10
   for log in error_log:
     sleep_time = 0
+    wait_started = time.time()
+    skip_log = False
     while log in netLocked and netLocked[log][0]:
       time.sleep(1)
       sleep_time += 1
-      if sleep_time > sleep_time_max:
-        Log.Error("Could not obtain the lock in {}sec & lock age is {}sec. Skipping log update.".format(sleep_time_max, int(time.time())-netLocked[1] if 1 in netLocked else "never"))
-        continue #break #netLock.acquire()
+      lock_age = int(time.time()) - int(netLocked[log][1]) if log in netLocked else 0
+      if lock_age > 300:
+        Log.Error("Log lock stale ({}s). Forcing release: '{}'.".format(lock_age, log))
+        netLocked[log] = (False, 0)
+        break
+      if time.time() - wait_started > 30 or sleep_time > sleep_time_max:
+        Log.Error("Could not obtain the lock in {}sec & lock age is {}sec. Skipping log update.".format(sleep_time_max, lock_age))
+        skip_log = True
+        break
+    if skip_log:  continue
     netLocked[log] = (True, int(time.time()))
-  
-    ### Load previous entries ###
-    Log.Info("{log:<{width}}: {content}".format(log=log, width=max(map(len, error_log)), content=str(error_log[log])))
-    error_log_array    = {}
-    log_line_separator = "<br />\r\n"
-    error_log_file     = os.path.join('_Logs', library+' - '+log+'.htm')
-    if Data.Exists(error_log_file):
-      for line in Data.Load(error_log_file).split(log_line_separator):
-        if "|" in line:  error_log_array[line.split("|", 1)[0].strip()] = line.split("|", 1)[1].strip()
+    try:
+      ### Load previous entries ###
+      Log.Info("{log:<{width}}: {content}".format(log=log, width=max(map(len, error_log)), content=str(error_log[log])))
+      error_log_array    = {}
+      log_line_separator = "<br />\r\n"
+      error_log_file     = os.path.join('_Logs', library+' - '+log+'.htm')
+      if Data.Exists(error_log_file):
+        for line in Data.Load(error_log_file).split(log_line_separator):
+          if "|" in line:  error_log_array[line.split("|", 1)[0].strip()] = line.split("|", 1)[1].strip()
 
-    ### Remove this serie entry ###
-    if not log in ["Missing Episodes", "Missing Specials"]:                              keys = ["AniDBid: "+AniDBid, "AniDBid: "+WEB_LINK % (ANIDB_SERIE_URL + AniDBid, AniDBid), "TVDBid: "+ TVDBid, "TVDBid: "+WEB_LINK % (TVDB_SERIE_URL + TVDBid, TVDBid)]
-    elif not movie and (len(media.seasons)>2 or max(map(int, media.seasons.keys()))>1):  keys = ["TVDBid: %s"  % (WEB_LINK % (TVDB_SERIE_URL + TVDBid,  TVDBid) )]
-    else:                                                                                keys = ["%s: %s" % (source, WEB_LINK % (ANIDB_SERIE_URL + AniDBid if source == "AniDBid" else TVDB_SERIE_URL + TVDBid, AniDBid if source == "AniDBid" else TVDBid) )]
-    deleted = []
-    for key in keys:
-      if key in error_log_array:
-        deleted.append(error_log_array[key]) 
-        del(error_log_array[key]) # remove entry, needs updating or removal...
-    if not deleted and not error_log[log]:  netLocked[log] = (False, 0);  continue  # didn't delete anything, no entry to add, the only case when we skip
+      ### Remove this serie entry ###
+      if not log in ["Missing Episodes", "Missing Specials"]:                              keys = ["AniDBid: "+AniDBid, "AniDBid: "+WEB_LINK % (ANIDB_SERIE_URL + AniDBid, AniDBid), "TVDBid: "+ TVDBid, "TVDBid: "+WEB_LINK % (TVDB_SERIE_URL + TVDBid, TVDBid)]
+      elif not movie and (len(media.seasons)>2 or max(map(int, media.seasons.keys()))>1):  keys = ["TVDBid: %s"  % (WEB_LINK % (TVDB_SERIE_URL + TVDBid,  TVDBid) )]
+      else:                                                                                keys = ["%s: %s" % (source, WEB_LINK % (ANIDB_SERIE_URL + AniDBid if source == "AniDBid" else TVDB_SERIE_URL + TVDBid, AniDBid if source == "AniDBid" else TVDBid) )]
+      deleted = []
+      for key in keys:
+        if key in error_log_array:
+          deleted.append(error_log_array[key]) 
+          del(error_log_array[key]) # remove entry, needs updating or removal...
+      if not deleted and not error_log[log]:  continue  # didn't delete anything, no entry to add, the only case when we skip
 
-    ### Generate prefix, append to error_log_array and Save error_log_array ###
-    log_prefix = ''
-    if log == 'TVDB posters missing': log_prefix = "Series posters must be 680x1000 and be JPG format. They should not contain spoilers, nudity, or vulgarity. Please ensure they are of high quality with no watermarks, unrelated logos, and that they don't appear stretched." + log_line_separator
-    if log == 'Plex themes missing':  log_prefix = WEB_LINK % ("https://plexapp.zendesk.com/hc/en-us/articles/201572843","Restrictions") + log_line_separator
-    for entry in error_log[log]:  error_log_array[entry.split("|", 1)[0].strip()] = entry.split("|", 1)[1].strip() if len(entry.split("|", 1))>=2 else ""
-    try:     Data.Save(error_log_file, log_prefix + log_line_separator.join(sorted([str(key)+" | "+str(error_log_array[key]) for key in error_log_array], key = lambda x: x.split("|",1)[1] if x.split("|",1)[1].strip().startswith("Title:") and not x.split("|",1)[1].strip().startswith("Title: ''") else int(re.sub(r"<[^<>]*>", "", x.split("|",1)[0]).strip().split()[1].strip("'")) )))
-    except Exception as e:  Log.Error("Exception: '%s'" % e)
-    
-    netLocked[log] = (False, 0)
+      ### Generate prefix, append to error_log_array and Save error_log_array ###
+      log_prefix = ''
+      if log == 'TVDB posters missing': log_prefix = "Series posters must be 680x1000 and be JPG format. They should not contain spoilers, nudity, or vulgarity. Please ensure they are of high quality with no watermarks, unrelated logos, and that they don't appear stretched." + log_line_separator
+      if log == 'Plex themes missing':  log_prefix = WEB_LINK % ("https://plexapp.zendesk.com/hc/en-us/articles/201572843","Restrictions") + log_line_separator
+      for entry in error_log[log]:  error_log_array[entry.split("|", 1)[0].strip()] = entry.split("|", 1)[1].strip() if len(entry.split("|", 1))>=2 else ""
+      try:     Data.Save(error_log_file, log_prefix + log_line_separator.join(sorted([str(key)+" | "+str(error_log_array[key]) for key in error_log_array], key = lambda x: x.split("|",1)[1] if x.split("|",1)[1].strip().startswith("Title:") and not x.split("|",1)[1].strip().startswith("Title: ''") else int(re.sub(r"<[^<>]*>", "", x.split("|",1)[0]).strip().split()[1].strip("'")) )))
+      except Exception as e:  Log.Error("Exception: '%s'" % e)
+    finally:
+      netLocked[log] = (False, 0)
 
 def Other_Tags(media, movie, status):  # Other_Tags(media, Dict(AniDB_dict, 'status') or Dict(TheTVDB_dict, 'status'))
   """ Add genre tags: Status, Extension, Dubbed/Subbed
