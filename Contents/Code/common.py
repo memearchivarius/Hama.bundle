@@ -45,6 +45,16 @@ Movie_to_Serie_US_rating = {"G"    : "TV-Y7", "PG"   : "TV-G", "PG-13": "TV-PG",
 COMMON_HEADERS    = {'User-agent': 'Plex/HAMA', 'Content-type': 'application/json'}
 THROTTLE          = {}
 
+def GetProxyUrl():
+  return os.environ.get('HAMA_HTTP_PROXY') or os.environ.get('http_proxy') or os.environ.get('https_proxy') or os.environ.get('HTTP_PROXY') or os.environ.get('HTTPS_PROXY')
+
+def UrlOpen(request, timeout=20):
+  proxy = GetProxyUrl()
+  if proxy:
+    opener = urllib2.build_opener(urllib2.ProxyHandler({'http': proxy, 'https': proxy}))
+    urllib2.install_opener(opener)
+  return urllib2.urlopen(request, context=ssl.SSLContext(ssl.PROTOCOL_SSLv23), timeout=timeout)
+
 ### Plex Library XML ###
 PLEX_LIBRARY, PLEX_LIBRARY_URL = {}, "http://localhost:32400/library/sections/"    # Allow to get the library name to get a log per library https://support.plex.tv/hc/en-us/articles/204059436-Finding-your-account-token-X-Plex-Token
 def GetPlexLibraries():
@@ -271,7 +281,7 @@ def ssl_open(url, headers={}, timeout=20):
          Use requests
   '''
   headers = UpdateDict(headers, COMMON_HEADERS)
-  return urllib2.urlopen(urllib2.Request(url, headers=headers), context=ssl.SSLContext(ssl.PROTOCOL_SSLv23), timeout=timeout).read()  
+  return UrlOpen(urllib2.Request(url, headers=headers), timeout=timeout).read()
 
 def GetStatusCode(url):
     """ This function retreives the status code of a website by requesting HEAD data only from the host.
@@ -420,7 +430,12 @@ def LoadFile(filename="", relativeDirectory="", url="", headers={}, data=None, c
       
       # Download URL to memory, Plex cache to 1 day
       try:
-        file_downloaded = HTTP.Request(url, headers=headers, data=data, timeout=60, cacheTime=CACHE_1DAY).content   #'Accept-Encoding':'gzip'  # Loaded with Plex cache, str prevent AttributeError: 'HTTPRequest' object has no attribute 'find', None if 'thetvdb' in url else 
+        if GetProxyUrl():
+          Log.Root("common.LoadFile() - Using HTTP proxy for url: '{}'".format(url))
+          request = urllib2.Request(url, data=data, headers=headers)
+          file_downloaded = UrlOpen(request, timeout=60).read()
+        else:
+          file_downloaded = HTTP.Request(url, headers=headers, data=data, timeout=60, cacheTime=CACHE_1DAY).content   #'Accept-Encoding':'gzip'  # Loaded with Plex cache, str prevent AttributeError: 'HTTPRequest' object has no attribute 'find', None if 'thetvdb' in url else 
         if url.endswith(".gz"):  file_downloaded = decompress(file_downloaded)
       except Exception as e:
         Log.Error("common.LoadFile() - issue loading url: '{}', filename: '{}', Headers: {}, Exception: '{}'".format(url, filename, headers, e))        # issue loading, but not AniDB banned as it returns "<error>Banned</error>"
